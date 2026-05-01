@@ -170,3 +170,153 @@ async function loadDetail(url, contentArea) {
 
 // 启动拦截
 observeAndIntercept();
+
+// 添加"选课详情"按钮（只在收藏页面显示）
+addCourseDetailsButton();
+
+function addCourseDetailsButton() {
+    // 检查是否在收藏页面（tabs_tit collect 有 tabs_select 类）
+    function checkAndAddButton() {
+        const collectTab = document.querySelector('.tabs_tit.collect');
+        const isCollectSelected = collectTab && collectTab.classList.contains('tabs_select');
+        
+        // 找到收藏页面的 tiaoshu div（collectData）
+        const collectTiaoshu = document.querySelector('#collectData > div.tiaoshu');
+        
+        if (isCollectSelected && collectTiaoshu) {
+            // 在收藏页面，显示按钮
+            if (collectTiaoshu.dataset.buttonAdded !== 'true') {
+                // 创建紫色按钮
+                const btn = document.createElement('a');
+                btn.className = 'course-details-btn';
+                btn.textContent = '选课详情';
+                btn.style.marginLeft = '15px';
+                btn.style.cursor = 'pointer';
+                btn.style.backgroundColor = '#8B5CF6';
+                btn.style.color = '#fff';
+                btn.style.padding = '6px 12px';
+                btn.style.borderRadius = '4px';
+                btn.style.display = 'inline-block';
+                btn.style.fontSize = '14px';
+                btn.style.textDecoration = 'none';
+                
+                btn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    btn.textContent = '加载中...';
+                    btn.style.opacity = '0.6';
+                    
+                    await fillMissingApplyCounts();
+                    
+                    setTimeout(() => {
+                        btn.textContent = '选课详情';
+                        btn.style.opacity = '1';
+                    }, 500);
+                });
+                
+                collectTiaoshu.appendChild(btn);
+                collectTiaoshu.dataset.buttonAdded = 'true';
+            }
+        } else {
+            // 不在收藏页面，移除按钮（如果存在）
+            const allTiaoshu = document.querySelectorAll('.tiaoshu');
+            allTiaoshu.forEach(tiaoshu => {
+                const existingBtn = tiaoshu.querySelector('.course-details-btn');
+                if (existingBtn) {
+                    existingBtn.remove();
+                }
+                tiaoshu.dataset.buttonAdded = 'false';
+            });
+        }
+    }
+    
+    // 监听DOM变化
+    const observer = new MutationObserver(() => {
+        checkAndAddButton();
+    });
+    
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+    
+    // 监听标签点击
+    document.addEventListener('click', (e) => {
+        if (e.target.classList.contains('tabs_tit')) {
+            setTimeout(() => checkAndAddButton(), 100);
+        }
+    });
+    
+    // 初始检查
+    setTimeout(() => checkAndAddButton(), 500);
+}
+
+// 补充缺失的申请人数信息
+async function fillMissingApplyCounts() {
+    // 找到所有 .renshu 下的 span 元素
+    const renshuSpans = document.querySelectorAll('.renshu > span');
+    
+    renshuSpans.forEach(async (span) => {
+        // 检查 span 是否为空（没有内容或只有空白）
+        const hasContent = span.innerHTML.trim().length > 0;
+        
+        if (hasContent) {
+            return; // 已有内容，跳过
+        }
+        
+        // 避免重复处理
+        if (span.dataset.loading === 'true') {
+            return;
+        }
+        span.dataset.loading = 'true';
+        
+        // span 的 id 就是项目 ID
+        const projectId = span.id;
+        if (!projectId) return;
+        
+        // 调用 API 获取申请人数
+        try {
+            const apiUrl = `${window.location.origin}/b/xs/xmsq/queryApplyCounts/${projectId}`;
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+            
+            if (!response.ok) return;
+            
+            const data = await response.json();
+            if (data.result !== 'success' || !data.object) return;
+            
+            // 构建申请人数统计（全部紫色）
+            const counts = data.object;
+            let countHtml = '<span style="color: #8B5CF6;">已申请人数（';
+            
+            // 按志愿排序（ZYXH: 1,2,3,4）
+            const zhiyuanMap = {};
+            counts.forEach(c => {
+                zhiyuanMap[c.ZYXH] = c.COUNT;
+            });
+            
+            // 显示各志愿人数
+            const zhiyuanLabels = ['第一志愿', '第二志愿', '第三志愿', '第四志愿'];
+            zhiyuanLabels.forEach((label, idx) => {
+                const count = zhiyuanMap[idx + 1] || 0;
+                if (idx === 0) {
+                    countHtml += `<i>${label}：<strong>${count}</strong></i>`;
+                } else {
+                    countHtml += ` <i>${label}：${count}</i>`;
+                }
+            });
+            
+            countHtml += '）</span>';
+            
+            // 更新 span 内容
+            span.innerHTML = countHtml;
+            
+        } catch (error) {
+            // 静默失败
+        }
+    });
+}
