@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "清华研究生社会实践系统增强插件",
+  "version": "1.0",
+  "description": "1. 新详情页跳转，改进成内嵌侧边栏。2. 收藏页面，增加已选人数详情。",
+  "icons": {
+    "48": "shijian-icon.png",
+    "128": "shijian-icon.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.thshijian.tsinghua.edu.cn/f/xs/xmsq/index/*"], 
+      "css": ["style.css"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
