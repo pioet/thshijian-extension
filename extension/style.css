@@ -174,3 +174,13 @@
     margin: 1px 0 !important;
     padding: 0 !important;
 }
+
+/* 已申请项目标题悬停效果 */
+#applyData .item.box_item .tit[data-intercepted="true"] {
+    cursor: pointer;
+    transition: color 0.2s ease;
+}
+
+#applyData .item.box_item .tit[data-intercepted="true"]:hover {
+    color: #8B5CF6 !important;
+}

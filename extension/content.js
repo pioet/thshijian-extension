@@ -171,8 +171,11 @@ async function loadDetail(url, contentArea) {
 // 启动拦截
 observeAndIntercept();
 
-// 添加"选课详情"按钮（只在收藏页面显示）
+// 添加"查询已选人数"按钮（只在收藏页面显示）
 addCourseDetailsButton();
+
+// 监听已申请项目并添加信息
+observeAppliedProjects();
 
 function addCourseDetailsButton() {
     // 检查是否在收藏页面（tabs_tit collect 有 tabs_select 类）
@@ -189,7 +192,7 @@ function addCourseDetailsButton() {
                 // 创建紫色按钮
                 const btn = document.createElement('a');
                 btn.className = 'course-details-btn';
-                btn.textContent = '选课详情';
+                btn.textContent = '查询已选人数';
                 btn.style.marginLeft = '15px';
                 btn.style.cursor = 'pointer';
                 btn.style.backgroundColor = '#8B5CF6';
@@ -208,7 +211,7 @@ function addCourseDetailsButton() {
                     await fillMissingApplyCounts();
                     
                     setTimeout(() => {
-                        btn.textContent = '选课详情';
+                        btn.textContent = '查询已选人数';
                         btn.style.opacity = '1';
                     }, 500);
                 });
@@ -320,3 +323,132 @@ async function fillMissingApplyCounts() {
         }
     });
 }
+
+// 为已申请项目添加需求人数、已选人数和点击事件
+function observeAppliedProjects() {
+    async function checkAndFillAppliedProjects() {
+        const appliedList = document.querySelector('#applyData > div.lists.box_lists');
+        if (!appliedList) return;
+        
+        const items = appliedList.querySelectorAll('.item.box_item');
+        
+        for (const item of items) {
+            if (item.dataset.filled === 'true') continue;
+            
+            const cancelBtn = item.querySelector('.cancelApply');
+            if (!cancelBtn) continue;
+            
+            const projectId = cancelBtn.getAttribute('xmid');
+            if (!projectId) continue;
+            
+            const titEl = item.querySelector('.tit');
+            if (!titEl) continue;
+            
+            // 1. 为标题添加点击劫持逻辑
+            if (titEl.dataset.intercepted !== 'true') {
+                titEl.dataset.intercepted = 'true';
+                titEl.style.cursor = 'pointer';
+                
+                titEl.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    
+                    if (!sidebar) {
+                        sidebar = createSidebar();
+                    }
+                    
+                    const contentArea = sidebar.querySelector('.sidebar-content');
+                    const isOpen = sidebar.classList.contains('open');
+                    contentArea.innerHTML = '<div class="loading">正在加载详情...</div>';
+                    
+                    if (!isOpen) {
+                        sidebar.classList.add('open');
+                    }
+                    
+                    // 直接用 projectId 构建详情 URL
+                    const detailUrl = `/f/xs/xmsq/view/${projectId}`;
+                    loadDetail(detailUrl, contentArea);
+                }, true);
+            }
+            
+            // 2. 检查 allData 是否已加载
+            const allDataItems = document.querySelectorAll('#allData .items .item');
+            if (allDataItems.length === 0) {
+                // allData 未加载，等待下次检查（不标记为已处理）
+                continue;
+            }
+            
+            // 标记为已处理（只有 allData 加载后才标记）
+            item.dataset.filled = 'true';
+            
+            // 3. 从 #allData 中解析需求人数
+            let demandCount = '-';
+            for (const allItem of allDataItems) {
+                const renshuSpan = allItem.querySelector(`.renshu > span[id="${projectId}"]`);
+                if (renshuSpan) {
+                    const renshuEl = allItem.querySelector('.zhiwei .renshu');
+                    if (renshuEl) {
+                        const fullText = renshuEl.textContent;
+                        const demandMatch = fullText.match(/需求人数[:：](\d+)/);
+                        if (demandMatch) {
+                            demandCount = demandMatch[1];
+                        }
+                        break;
+                    }
+                }
+            }
+            
+            // 4. 调用API获取各志愿人数
+            try {
+                const apiUrl = `${window.location.origin}/b/xs/xmsq/queryApplyCounts/${projectId}`;
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+                
+                if (!response.ok) continue;
+                
+                const data = await response.json();
+                if (data.result !== 'success' || !data.object) continue;
+                
+                const zhiyuanMap = {};
+                data.object.forEach(c => {
+                    zhiyuanMap[c.ZYXH] = c.COUNT;
+                });
+                
+                const z1 = zhiyuanMap[1] || 0;
+                const z2 = zhiyuanMap[2] || 0;
+                const z3 = zhiyuanMap[3] || 0;
+                const z4 = zhiyuanMap[4] || 0;
+                
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'renshu apply-project-renshu';
+                infoDiv.style.cssText = 'font-size: 12px; color: #666;';
+                infoDiv.innerHTML = `<span style="color: #8B5CF6;">人数状态：</span>${demandCount}:${z1}/${z2}/${z3}/${z4}`;
+                titEl.after(infoDiv);
+                
+            } catch (error) {
+                // 静默失败
+            }
+        }
+    }
+    
+    const observer = new MutationObserver(() => {
+        checkAndFillAppliedProjects();
+    });
+    
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+    
+    setTimeout(() => checkAndFillAppliedProjects(), 1000);
+    setTimeout(() => checkAndFillAppliedProjects(), 2000);
+    setTimeout(() => checkAndFillAppliedProjects(), 3000);
+    setTimeout(() => checkAndFillAppliedProjects(), 5000);
+}
+
