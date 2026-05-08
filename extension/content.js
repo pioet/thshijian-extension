@@ -177,8 +177,210 @@ addCourseDetailsButton();
 // 添加"中签概率排序"按钮（只在项目查询页面显示）
 addProbabilitySortButton();
 
+// 添加提交历史缓存和展示
+cacheSubmittedApplyHistory();
+addSubmitHistoryButton();
+
 // 监听已申请项目并添加信息
 observeAppliedProjects();
+
+const SUBMIT_HISTORY_STORAGE_KEY = 'thshijianSubmitHistory';
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+}
+
+function getSubmitHistory() {
+    try {
+        const rawHistory = localStorage.getItem(SUBMIT_HISTORY_STORAGE_KEY);
+        const history = rawHistory ? JSON.parse(rawHistory) : [];
+        return Array.isArray(history) ? history : [];
+    } catch (error) {
+        return [];
+    }
+}
+
+function saveSubmitHistory(history) {
+    localStorage.setItem(SUBMIT_HISTORY_STORAGE_KEY, JSON.stringify(history));
+}
+
+function getCurrentApplyProjectId() {
+    const match = window.location.pathname.match(/\/f\/xs\/xmsq\/apply\/([^/?#]+)/);
+    return match ? match[1] : '';
+}
+
+function cacheCurrentApplyForm() {
+    const projectId = getCurrentApplyProjectId();
+    const titleEl = document.querySelector('#applyForm > div.cot > div.title');
+    const reasonEl = document.querySelector('#applyForm > div.cot_info > div.my_shenqing > div.panel-body > div:nth-child(1) > div > span > textarea');
+
+    if (!projectId || !titleEl || !reasonEl) return;
+
+    const projectName = titleEl.textContent.trim();
+    const reason = reasonEl.value.trim();
+    const submittedAt = new Date().toISOString();
+    const history = getSubmitHistory();
+    const record = {
+        id: `${projectId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        projectId,
+        projectName,
+        reason,
+        submittedAt
+    };
+
+    history.unshift(record);
+    saveSubmitHistory(history);
+}
+
+function cacheSubmittedApplyHistory() {
+    if (!getCurrentApplyProjectId()) return;
+
+    document.addEventListener('click', (e) => {
+        const submitButton = e.target.closest('#applyForm > div.cot_info > div.btn_group.btn_group_2 > a.btn_sub.btn_orange_b.apply');
+        if (!submitButton) return;
+
+        cacheCurrentApplyForm();
+    }, true);
+}
+
+function formatSubmitTime(value) {
+    if (!value) return '';
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+
+    return date.toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function createSubmitHistoryModal() {
+    let modal = document.querySelector('#submit-history-modal');
+    if (modal) return modal;
+
+    modal = document.createElement('div');
+    modal.id = 'submit-history-modal';
+    modal.innerHTML = `
+        <div class="submit-history-dialog" role="dialog" aria-modal="true" aria-labelledby="submit-history-title">
+            <div class="submit-history-header">
+                <h3 id="submit-history-title">提交历史</h3>
+                <button class="submit-history-close" type="button" aria-label="关闭">&times;</button>
+            </div>
+            <div class="submit-history-content"></div>
+        </div>
+    `;
+
+    modal.addEventListener('click', (e) => {
+        const deleteButton = e.target.closest('.submit-history-delete');
+        if (deleteButton) {
+            const historyId = deleteButton.dataset.historyId;
+            deleteSubmitHistoryItem(historyId);
+            return;
+        }
+
+        if (e.target.closest('.submit-history-close')) {
+            closeSubmitHistoryModal();
+        }
+    });
+
+    document.body.appendChild(modal);
+    return modal;
+}
+
+function closeSubmitHistoryModal() {
+    const modal = document.querySelector('#submit-history-modal');
+    if (modal) {
+        modal.classList.remove('open');
+    }
+
+    document.body.classList.remove('submit-history-modal-open');
+}
+
+function deleteSubmitHistoryItem(historyId) {
+    if (!historyId) return;
+
+    const history = getSubmitHistory();
+    const nextHistory = history.filter(item => getSubmitHistoryItemId(item) !== historyId);
+
+    saveSubmitHistory(nextHistory);
+
+    const modal = document.querySelector('#submit-history-modal');
+    const content = modal ? modal.querySelector('.submit-history-content') : null;
+    if (content) {
+        content.innerHTML = renderSubmitHistory();
+    }
+}
+
+function getSubmitHistoryItemId(item) {
+    if (item.id) return item.id;
+    return `${item.projectId || ''}-${item.submittedAt || ''}`;
+}
+
+function renderSubmitHistory() {
+    const history = getSubmitHistory();
+
+    if (history.length === 0) {
+        return '<div class="submit-history-empty">暂无提交历史</div>';
+    }
+
+    return history.map(item => `
+        <div class="submit-history-item" data-history-id="${escapeHtml(getSubmitHistoryItemId(item))}">
+            <div class="submit-history-item-head">
+                <div class="submit-history-item-title">${escapeHtml(item.projectName || '未命名项目')}</div>
+                <button class="submit-history-delete" type="button" data-history-id="${escapeHtml(getSubmitHistoryItemId(item))}">删除</button>
+            </div>
+            <div class="submit-history-meta">项目 ID：${escapeHtml(item.projectId || '')}</div>
+            ${item.submittedAt ? `<div class="submit-history-meta">提交时间：${escapeHtml(formatSubmitTime(item.submittedAt))}</div>` : ''}
+            <div class="submit-history-reason-label">申请理由</div>
+            <div class="submit-history-reason">${escapeHtml(item.reason || '未填写')}</div>
+        </div>
+    `).join('');
+}
+
+function showSubmitHistoryModal() {
+    const modal = createSubmitHistoryModal();
+    const content = modal.querySelector('.submit-history-content');
+
+    content.innerHTML = renderSubmitHistory();
+    modal.classList.add('open');
+    document.body.classList.add('submit-history-modal-open');
+}
+
+function addSubmitHistoryButton() {
+    function checkAndAddButton() {
+        const actionBar = document.querySelector('#applyData > div.acti.color_orange');
+        if (!actionBar || actionBar.querySelector('.submit-history-btn')) return;
+
+        const btn = document.createElement('a');
+        btn.className = 'submit-history-btn';
+        btn.textContent = '提交历史';
+        btn.href = 'javascript:;';
+
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            showSubmitHistoryModal();
+        });
+
+        actionBar.appendChild(btn);
+    }
+
+    const observer = new MutationObserver(() => {
+        checkAndAddButton();
+    });
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+
+    setTimeout(() => checkAndAddButton(), 500);
+}
 
 function getDemandCountFromItem(item) {
     const renshuEl = item.querySelector('.zhiwei .renshu') || item.querySelector('.renshu');

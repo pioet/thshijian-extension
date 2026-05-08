@@ -2,14 +2,17 @@
   "manifest_version": 3,
   "name": "清华研究生社会实践系统增强插件",
   "version": "1.0",
-  "description": "1. 新详情页跳转改进成内嵌侧边栏 2. 收藏页面增加查询已选人数情况 3. 已提交申请增加显示详情和已选人数情况 4. 项目查询页面支持中签概率排序",
+  "description": "1. 新详情页跳转改进成内嵌侧边栏 2. 收藏页面增加查询已选人数情况 3. 已提交申请增加显示详情和已选人数情况 4. 项目查询页面支持中签概率排序 5. 支持查看提交历史",
   "icons": {
     "48": "shijian-icon.png",
     "128": "shijian-icon.png"
   },
   "content_scripts": [
     {
-      "matches": ["*://*.thshijian.tsinghua.edu.cn/f/xs/xmsq/index/*"], 
+      "matches": [
+        "*://*.thshijian.tsinghua.edu.cn/f/xs/xmsq/index/*",
+        "*://*.thshijian.tsinghua.edu.cn/f/xs/xmsq/apply/*"
+      ],
       "css": ["style.css"],
       "js": ["content.js"],
       "run_at": "document_idle"
