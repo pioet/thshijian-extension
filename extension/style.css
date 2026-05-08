@@ -184,3 +184,21 @@
 #applyData .item.box_item .tit[data-intercepted="true"]:hover {
     color: #8B5CF6 !important;
 }
+
+/* 项目查询页中签概率排序按钮 */
+.probability-sort-btn {
+    margin-left: 15px;
+    cursor: pointer;
+    background-color: #8B5CF6;
+    color: #fff !important;
+    padding: 6px 12px;
+    border-radius: 4px;
+    display: inline-block;
+    font-size: 14px;
+    text-decoration: none !important;
+    line-height: 1.2;
+}
+
+.probability-sort-btn:hover {
+    background-color: #7C3AED;
+}

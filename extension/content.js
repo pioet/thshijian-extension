@@ -174,8 +174,214 @@ observeAndIntercept();
 // 添加"查询已选人数"按钮（只在收藏页面显示）
 addCourseDetailsButton();
 
+// 添加"中签概率排序"按钮（只在项目查询页面显示）
+addProbabilitySortButton();
+
 // 监听已申请项目并添加信息
 observeAppliedProjects();
+
+function getDemandCountFromItem(item) {
+    const renshuEl = item.querySelector('.zhiwei .renshu') || item.querySelector('.renshu');
+    if (!renshuEl) return 0;
+
+    const demandMatch = renshuEl.textContent.match(/需求人数[:：]\s*(\d+)/);
+    return demandMatch ? parseInt(demandMatch[1], 10) : 0;
+}
+
+function parseApplyCountsFromText(text) {
+    const labels = ['第一志愿', '第二志愿', '第三志愿', '第四志愿'];
+    return labels.map(label => {
+        const match = text.match(new RegExp(`${label}\\s*[:：]\\s*(\\d+)`));
+        return match ? parseInt(match[1], 10) : 0;
+    });
+}
+
+function buildApplyCountsHtml(counts) {
+    const zhiyuanLabels = ['第一志愿', '第二志愿', '第三志愿', '第四志愿'];
+    let countHtml = '<span style="color: #8B5CF6;">已申请人数（';
+
+    zhiyuanLabels.forEach((label, idx) => {
+        const count = counts[idx] || 0;
+        if (idx === 0) {
+            countHtml += `<i>${label}：<strong>${count}</strong></i>`;
+        } else {
+            countHtml += ` <i>${label}：${count}</i>`;
+        }
+    });
+
+    countHtml += '）</span>';
+    return countHtml;
+}
+
+async function fetchApplyCounts(projectId) {
+    if (!projectId) return null;
+
+    try {
+        const apiUrl = `${window.location.origin}/b/xs/xmsq/queryApplyCounts/${projectId}`;
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        });
+
+        if (!response.ok) return null;
+
+        const data = await response.json();
+        if (data.result !== 'success' || !data.object) return null;
+
+        const counts = [0, 0, 0, 0];
+        data.object.forEach(c => {
+            const index = parseInt(c.ZYXH, 10) - 1;
+            if (index >= 0 && index < counts.length) {
+                counts[index] = parseInt(c.COUNT, 10) || 0;
+            }
+        });
+
+        return counts;
+    } catch (error) {
+        return null;
+    }
+}
+
+async function getApplyCountsForItem(item) {
+    const span = item.querySelector('.renshu > span[id]');
+    if (!span) return [0, 0, 0, 0];
+
+    const hasContent = span.innerHTML.trim().length > 0;
+    if (hasContent) {
+        return parseApplyCountsFromText(span.textContent);
+    }
+
+    span.dataset.loading = 'true';
+    const counts = await fetchApplyCounts(span.id);
+    span.dataset.loading = 'false';
+
+    if (counts) {
+        span.innerHTML = buildApplyCountsHtml(counts);
+        return counts;
+    }
+
+    return [0, 0, 0, 0];
+}
+
+function calculateProbabilityScores(demandCount, counts) {
+    const scores = [];
+
+    for (let index = 0; index < 4; index++) {
+        const higherPreferenceCount = counts.slice(0, index).reduce((sum, count) => sum + count, 0);
+        const remainingQuota = demandCount - higherPreferenceCount;
+        const currentPreferencePool = (counts[index] || 0) + 1;
+
+        if (remainingQuota <= 0 || currentPreferencePool <= 0) {
+            scores.push(0);
+        } else {
+            scores.push(Math.min(1, remainingQuota / currentPreferencePool));
+        }
+    }
+
+    return scores;
+}
+
+async function sortAllDataByProbability(button) {
+    const itemsContainer = document.querySelector('#allData > div.items');
+    if (!itemsContainer) return;
+
+    const items = Array.from(itemsContainer.children).filter(child => child.tagName === 'DIV');
+    if (items.length === 0) return;
+
+    const sortableItems = [];
+
+    for (const item of items) {
+        const demandCount = getDemandCountFromItem(item);
+        const counts = await getApplyCountsForItem(item);
+        const scores = calculateProbabilityScores(demandCount, counts);
+
+        item.dataset.firstChoiceProbability = String(scores[0]);
+        item.dataset.secondChoiceProbability = String(scores[1]);
+
+        sortableItems.push({
+            item,
+            firstChoiceProbability: scores[0],
+            secondChoiceProbability: scores[1],
+            originalIndex: sortableItems.length
+        });
+    }
+
+    sortableItems.sort((a, b) => {
+        if (b.firstChoiceProbability !== a.firstChoiceProbability) {
+            return b.firstChoiceProbability - a.firstChoiceProbability;
+        }
+
+        if (b.secondChoiceProbability !== a.secondChoiceProbability) {
+            return b.secondChoiceProbability - a.secondChoiceProbability;
+        }
+
+        return a.originalIndex - b.originalIndex;
+    });
+
+    const fragment = document.createDocumentFragment();
+    sortableItems.forEach(({ item }) => fragment.appendChild(item));
+    itemsContainer.appendChild(fragment);
+
+    if (button) {
+        button.title = '已按第一志愿概率、第二志愿概率从高到低排序';
+    }
+}
+
+function addProbabilitySortButton() {
+    function checkAndAddButton() {
+        const allTab = document.querySelector('.tabs_tit.all');
+        const isAllSelected = allTab && allTab.classList.contains('tabs_select');
+        const allTiaoshu = document.querySelector('#allData > div.tiaoshu');
+
+        if (isAllSelected && allTiaoshu) {
+            if (allTiaoshu.querySelector('.probability-sort-btn')) return;
+
+            const btn = document.createElement('a');
+            btn.className = 'probability-sort-btn';
+            btn.textContent = '中签概率排序';
+
+            btn.addEventListener('click', async (e) => {
+                e.preventDefault();
+
+                if (btn.dataset.loading === 'true') return;
+
+                btn.dataset.loading = 'true';
+                btn.textContent = '排序中...';
+                btn.style.opacity = '0.6';
+
+                await sortAllDataByProbability(btn);
+
+                btn.textContent = '中签概率排序';
+                btn.style.opacity = '1';
+                btn.dataset.loading = 'false';
+            });
+
+            allTiaoshu.appendChild(btn);
+        } else {
+            document.querySelectorAll('.probability-sort-btn').forEach(btn => btn.remove());
+        }
+    }
+
+    const observer = new MutationObserver(() => {
+        checkAndAddButton();
+    });
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+
+    document.addEventListener('click', (e) => {
+        if (e.target.classList.contains('tabs_tit')) {
+            setTimeout(() => checkAndAddButton(), 100);
+        }
+    });
+
+    setTimeout(() => checkAndAddButton(), 500);
+}
 
 function addCourseDetailsButton() {
     // 检查是否在收藏页面（tabs_tit collect 有 tabs_select 类）
@@ -451,4 +657,3 @@ function observeAppliedProjects() {
     setTimeout(() => checkAndFillAppliedProjects(), 3000);
     setTimeout(() => checkAndFillAppliedProjects(), 5000);
 }
-
