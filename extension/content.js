@@ -447,6 +447,34 @@ async function fetchApplyCounts(projectId) {
     }
 }
 
+function getProjectIdFromAppliedItem(item) {
+    const idCarrier = item.querySelector('.cancelApply[xmid], [xmid]');
+    const xmid = idCarrier ? idCarrier.getAttribute('xmid') : '';
+    if (xmid) return xmid;
+
+    const countSpan = item.querySelector('.renshu > span[id]');
+    if (countSpan && countSpan.id) return countSpan.id;
+
+    const link = item.querySelector('a[href*="/view/"], a[href*="/apply/"], .tit[href]');
+    const linkText = link ? `${link.getAttribute('href') || ''} ${link.getAttribute('onclick') || ''}` : '';
+    const match = linkText.match(/\/(?:view|apply)\/([^/?#'"]+)/);
+    return match ? match[1] : '';
+}
+
+function getAppliedProjectDemandCount(projectId) {
+    const allDataItems = document.querySelectorAll('#allData .items .item');
+
+    for (const allItem of allDataItems) {
+        const renshuSpan = Array.from(allItem.querySelectorAll('.renshu > span[id]')).find(span => span.id === projectId);
+        if (!renshuSpan) continue;
+
+        const demandCount = getDemandCountFromItem(allItem);
+        if (demandCount > 0) return String(demandCount);
+    }
+
+    return '-';
+}
+
 async function getApplyCountsForItem(item) {
     const span = item.querySelector('.renshu > span[id]');
     if (!span) return [0, 0, 0, 0];
@@ -741,12 +769,7 @@ function observeAppliedProjects() {
         const items = appliedList.querySelectorAll('.item.box_item');
         
         for (const item of items) {
-            if (item.dataset.filled === 'true') continue;
-            
-            const cancelBtn = item.querySelector('.cancelApply');
-            if (!cancelBtn) continue;
-            
-            const projectId = cancelBtn.getAttribute('xmid');
+            const projectId = getProjectIdFromAppliedItem(item);
             if (!projectId) continue;
             
             const titEl = item.querySelector('.tit');
@@ -780,66 +803,41 @@ function observeAppliedProjects() {
                 }, true);
             }
             
-            // 2. 检查 allData 是否已加载
-            const allDataItems = document.querySelectorAll('#allData .items .item');
-            if (allDataItems.length === 0) {
-                // allData 未加载，等待下次检查（不标记为已处理）
+            const existingInfoDiv = item.querySelector('.apply-project-renshu');
+            const demandCount = getAppliedProjectDemandCount(projectId);
+
+            if (existingInfoDiv) {
+                if (existingInfoDiv.dataset.demandCount === '-' && demandCount !== '-') {
+                    existingInfoDiv.dataset.demandCount = demandCount;
+                    existingInfoDiv.innerHTML = `<span style="color: #8B5CF6;">人数状态：</span>${demandCount}:${existingInfoDiv.dataset.countsText || '0/0/0/0'}`;
+                }
                 continue;
             }
-            
-            // 标记为已处理（只有 allData 加载后才标记）
-            item.dataset.filled = 'true';
-            
-            // 3. 从 #allData 中解析需求人数
-            let demandCount = '-';
-            for (const allItem of allDataItems) {
-                const renshuSpan = allItem.querySelector(`.renshu > span[id="${projectId}"]`);
-                if (renshuSpan) {
-                    const renshuEl = allItem.querySelector('.zhiwei .renshu');
-                    if (renshuEl) {
-                        const fullText = renshuEl.textContent;
-                        const demandMatch = fullText.match(/需求人数[:：](\d+)/);
-                        if (demandMatch) {
-                            demandCount = demandMatch[1];
-                        }
-                        break;
-                    }
-                }
+
+            if (item.dataset.applyCountsLoading === 'true') {
+                continue;
             }
             
             // 4. 调用API获取各志愿人数
             try {
-                const apiUrl = `${window.location.origin}/b/xs/xmsq/queryApplyCounts/${projectId}`;
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    }
-                });
-                
-                if (!response.ok) continue;
-                
-                const data = await response.json();
-                if (data.result !== 'success' || !data.object) continue;
-                
-                const zhiyuanMap = {};
-                data.object.forEach(c => {
-                    zhiyuanMap[c.ZYXH] = c.COUNT;
-                });
-                
-                const z1 = zhiyuanMap[1] || 0;
-                const z2 = zhiyuanMap[2] || 0;
-                const z3 = zhiyuanMap[3] || 0;
-                const z4 = zhiyuanMap[4] || 0;
+                item.dataset.applyCountsLoading = 'true';
+                const counts = await fetchApplyCounts(projectId);
+                item.dataset.applyCountsLoading = 'false';
+
+                if (!counts) continue;
+
+                const countsText = counts.join('/');
                 
                 const infoDiv = document.createElement('div');
                 infoDiv.className = 'renshu apply-project-renshu';
+                infoDiv.dataset.demandCount = demandCount;
+                infoDiv.dataset.countsText = countsText;
                 infoDiv.style.cssText = 'font-size: 12px; color: #666;';
-                infoDiv.innerHTML = `<span style="color: #8B5CF6;">人数状态：</span>${demandCount}:${z1}/${z2}/${z3}/${z4}`;
+                infoDiv.innerHTML = `<span style="color: #8B5CF6;">人数状态：</span>${demandCount}:${countsText}`;
                 titEl.after(infoDiv);
                 
             } catch (error) {
+                item.dataset.applyCountsLoading = 'false';
                 // 静默失败
             }
         }
