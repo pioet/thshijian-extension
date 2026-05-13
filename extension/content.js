@@ -46,11 +46,24 @@ function getElementsByXPath(xpath) {
 
 // 使用MutationObserver监听DOM变化
 function observeAndIntercept() {
-    // 修改XPath：去掉序号，匹配所有li下的a标签
-    const targetXPath = '/html/body/div[3]/div[3]/ul/li/div/div[2]/div/div/a';
+    // 修改XPath：去掉序号，匹配所有li下的a标签；同时覆盖已申请项目列表的标题链接
+    const targetXPaths = [
+        '/html/body/div[3]/div[3]/ul/li/div/div[2]/div/div/a',
+        '/html[1]/body[1]/div[3]/div[2]/div[2]/div/div[3]//div[contains(concat(" ", normalize-space(@class), " "), " tit ")]/a'
+    ];
+
+    function getTargetLinks() {
+        const links = [];
+
+        targetXPaths.forEach((xpath) => {
+            links.push(...getElementsByXPath(xpath));
+        });
+
+        return Array.from(new Set(links));
+    }
     
     // 初始检查
-    const elements = getElementsByXPath(targetXPath);
+    const elements = getTargetLinks();
     
     if (elements.length > 0) {
         interceptLinks(elements);
@@ -58,7 +71,7 @@ function observeAndIntercept() {
     
     // 监听DOM变化
     const observer = new MutationObserver((mutations) => {
-        const elements = getElementsByXPath(targetXPath);
+        const elements = getTargetLinks();
         if (elements.length > 0) {
             interceptLinks(elements);
         }
@@ -182,7 +195,7 @@ addProbabilitySortButton();
 cacheSubmittedApplyHistory();
 addSubmitHistoryButton();
 
-// 监听已申请项目并添加信息
+// 监听已申请项目并添加需求人数
 observeAppliedProjects();
 
 const SUBMIT_HISTORY_STORAGE_KEY = 'thshijianSubmitHistory';
@@ -416,6 +429,10 @@ function buildApplyCountsHtml(counts) {
     return countHtml;
 }
 
+function normalizeProjectId(projectId) {
+    return (projectId || '').replace(/^(all|collect)/, '');
+}
+
 async function fetchApplyCounts(projectId) {
     if (!projectId) return null;
 
@@ -451,22 +468,27 @@ async function fetchApplyCounts(projectId) {
 function getProjectIdFromAppliedItem(item) {
     const idCarrier = item.querySelector('.cancelApply[xmid], [xmid]');
     const xmid = idCarrier ? idCarrier.getAttribute('xmid') : '';
-    if (xmid) return xmid;
+    if (xmid) return normalizeProjectId(xmid);
 
     const countSpan = item.querySelector('.renshu > span[id]');
-    if (countSpan && countSpan.id) return countSpan.id;
+    if (countSpan && countSpan.id) return normalizeProjectId(countSpan.id);
 
     const link = item.querySelector('a[href*="/view/"], a[href*="/apply/"], .tit[href]');
     const linkText = link ? `${link.getAttribute('href') || ''} ${link.getAttribute('onclick') || ''}` : '';
     const match = linkText.match(/\/(?:view|apply)\/([^/?#'"]+)/);
-    return match ? match[1] : '';
+    return match ? normalizeProjectId(match[1]) : '';
 }
 
 function getAppliedProjectDemandCount(projectId) {
-    const allDataItems = document.querySelectorAll('#allData .items .item');
+    const normalizedProjectId = normalizeProjectId(projectId);
+    const allDataItems = document.querySelectorAll('#allData > .items > div, #allData .items .item');
 
     for (const allItem of allDataItems) {
-        const renshuSpan = Array.from(allItem.querySelectorAll('.renshu > span[id]')).find(span => span.id === projectId);
+        const renshuSpan = Array.from(allItem.querySelectorAll('.renshu > span')).find((span) => {
+            const mid = normalizeProjectId(span.getAttribute('mid'));
+            const id = normalizeProjectId(span.id);
+            return mid === normalizedProjectId || id === normalizedProjectId;
+        });
         if (!renshuSpan) continue;
 
         const demandCount = getDemandCountFromItem(allItem);
@@ -761,9 +783,9 @@ async function fillMissingApplyCounts() {
     });
 }
 
-// 为已申请项目添加需求人数、已选人数和点击事件
+// 为已申请项目添加需求人数
 function observeAppliedProjects() {
-    async function checkAndFillAppliedProjects() {
+    function checkAndFillAppliedProjects() {
         const appliedList = document.querySelector('#applyData > div.lists.box_lists');
         if (!appliedList) return;
         
@@ -772,75 +794,27 @@ function observeAppliedProjects() {
         for (const item of items) {
             const projectId = getProjectIdFromAppliedItem(item);
             if (!projectId) continue;
-            
-            const titEl = item.querySelector('.tit');
-            if (!titEl) continue;
-            
-            // 1. 为标题添加点击劫持逻辑
-            if (titEl.dataset.intercepted !== 'true') {
-                titEl.dataset.intercepted = 'true';
-                titEl.style.cursor = 'pointer';
-                
-                titEl.addEventListener('click', async (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    e.stopImmediatePropagation();
-                    
-                    if (!sidebar) {
-                        sidebar = createSidebar();
-                    }
-                    
-                    const contentArea = sidebar.querySelector('.sidebar-content');
-                    const isOpen = sidebar.classList.contains('open');
-                    contentArea.innerHTML = '<div class="loading">正在加载详情...</div>';
-                    
-                    if (!isOpen) {
-                        sidebar.classList.add('open');
-                    }
-                    
-                    // 直接用 projectId 构建详情 URL
-                    const detailUrl = `/f/xs/xmsq/view/${projectId}`;
-                    loadDetail(detailUrl, contentArea);
-                }, true);
-            }
-            
-            const existingInfoDiv = item.querySelector('.apply-project-renshu');
+
             const demandCount = getAppliedProjectDemandCount(projectId);
+            const existingInfoDiv = item.querySelector('.apply-project-demand-count');
 
             if (existingInfoDiv) {
-                if (existingInfoDiv.dataset.demandCount === '-' && demandCount !== '-') {
+                if (existingInfoDiv.dataset.demandCount !== demandCount) {
                     existingInfoDiv.dataset.demandCount = demandCount;
-                    existingInfoDiv.innerHTML = `<span style="color: #8B5CF6;">人数状态：</span>${demandCount}:${existingInfoDiv.dataset.countsText || '0/0/0/0'}`;
+                    existingInfoDiv.innerHTML = `<span style="color: #8B5CF6;">需求人数：</span>${demandCount}`;
                 }
                 continue;
             }
 
-            if (item.dataset.applyCountsLoading === 'true') {
-                continue;
-            }
-            
-            // 4. 调用API获取各志愿人数
-            try {
-                item.dataset.applyCountsLoading = 'true';
-                const counts = await fetchApplyCounts(projectId);
-                item.dataset.applyCountsLoading = 'false';
+            const insertBeforeEl = item.querySelector(':scope > div:nth-child(2)');
+            if (!insertBeforeEl) continue;
 
-                if (!counts) continue;
-
-                const countsText = counts.join('/');
-                
-                const infoDiv = document.createElement('div');
-                infoDiv.className = 'renshu apply-project-renshu';
-                infoDiv.dataset.demandCount = demandCount;
-                infoDiv.dataset.countsText = countsText;
-                infoDiv.style.cssText = 'font-size: 12px; color: #666;';
-                infoDiv.innerHTML = `<span style="color: #8B5CF6;">人数状态：</span>${demandCount}:${countsText}`;
-                titEl.after(infoDiv);
-                
-            } catch (error) {
-                item.dataset.applyCountsLoading = 'false';
-                // 静默失败
-            }
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'renshu apply-project-demand-count';
+            infoDiv.dataset.demandCount = demandCount;
+            infoDiv.style.cssText = 'font-size: 12px; color: #666;';
+            infoDiv.innerHTML = `<span style="color: #8B5CF6;">需求人数：</span>${demandCount}`;
+            item.insertBefore(infoDiv, insertBeforeEl);
         }
     }
     
