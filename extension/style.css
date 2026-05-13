@@ -175,6 +175,81 @@
     padding: 0 !important;
 }
 
+/* 详情页表单样式 */
+#detail-sidebar .sidebar-content .cot {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    filter: none !important;
+    transform: none !important;
+}
+
+#detail-sidebar .sidebar-content .cot .title {
+    margin: 4px 0 12px !important;
+    font-size: 18px !important;
+    line-height: 1.55 !important;
+    font-weight: 600 !important;
+    color: #222 !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    -webkit-text-stroke: 0 !important;
+    filter: none !important;
+    transform: none !important;
+    outline: 0 !important;
+}
+
+#detail-sidebar .sidebar-content .cot .title::before,
+#detail-sidebar .sidebar-content .cot .title::after {
+    display: none !important;
+    content: none !important;
+}
+
+#detail-sidebar .sidebar-content .cot_info,
+#detail-sidebar .sidebar-content .cot_info > div,
+#detail-sidebar .sidebar-content .cot_info .panel-heading,
+#detail-sidebar .sidebar-content .cot_info .panel-body,
+#detail-sidebar .sidebar-content .cot_info .row,
+#detail-sidebar .sidebar-content .cot_info [class*="col-"],
+#detail-sidebar .sidebar-content .cot_info table,
+#detail-sidebar .sidebar-content .cot_info th,
+#detail-sidebar .sidebar-content .cot_info td {
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+#detail-sidebar .sidebar-content .cot_info .panel-heading {
+    margin: 12px 0 6px !important;
+    padding: 0 !important;
+    background: transparent !important;
+    font-weight: 600 !important;
+    color: #333 !important;
+}
+
+#detail-sidebar .sidebar-content .cot_info .panel-heading span {
+    font-size: 14px !important;
+    line-height: 1.45 !important;
+}
+
+#detail-sidebar .sidebar-content .cot_info .panel-body {
+    padding: 0 !important;
+    background: transparent !important;
+}
+
+#detail-sidebar .sidebar-content .cot_info .panel-body > div {
+    margin: 5px 0 !important;
+}
+
+#detail-sidebar .sidebar-content .cot_info label,
+#detail-sidebar .sidebar-content .cot_info span {
+    line-height: 1.55 !important;
+}
+
+#detail-sidebar .sidebar-content .cot_info .line-height-24 {
+    white-space: pre-line !important;
+}
+
 /* 已申请项目标题悬停效果 */
 #applyData .item.box_item .tit[data-intercepted="true"] {
     cursor: pointer;
