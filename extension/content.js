@@ -710,7 +710,7 @@ async function fillMissingApplyCounts() {
         span.dataset.loading = 'true';
         
         // span 的 id 就是项目 ID
-        const projectId = span.id;
+        const projectId = span.id.replace(/^collect/, '');
         if (!projectId) return;
         
         // 调用 API 获取申请人数
