@@ -142,7 +142,8 @@ async function loadDetail(url, contentArea) {
         const doc = parser.parseFromString(htmlText, 'text/html');
         
         // 尝试多个可能的内容选择器
-        const selectors = ['.cot_info', '.detail-content', '.content', 'main', '#content'];
+        const selectors = ['#applyForm']; // add project name in detail page
+        // const selectors = ['.cot_info', '.detail-content', '.content', 'main', '#content'];
         let targetContent = null;
         
         for (const selector of selectors) {
